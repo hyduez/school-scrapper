@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>School STEM Scraper</title>
+    <title>School STEM Scraper Pro</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h2>🔬 STEM Teacher Scraper</h2>
+            <h2>🔬 Smart School Scraper</h2>
             <div id="status-badge" class="badge idle">Idle</div>
         </header>
 
@@ -29,8 +29,11 @@
             <div class="stats">
                 <p>Pages Crawled: <span id="pages-crawled">0</span> / 120</p>
                 <p>Scanning: <span id="current-url" style="font-size: 0.8em; color: #666; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;">Idle</span></p>
-                <p>Total Teachers: <span id="teachers-found">0</span></p>
-                <p>STEM Found: <span id="stem-found" style="color:var(--success)">0</span></p>
+                <div class="stat-grid">
+                    <p>Total: <span id="teachers-found">0</span></p>
+                    <p>STEM: <span id="stem-found" class="text-success">0</span></p>
+                    <p>Leadership: <span id="leadership-found" class="text-primary">0</span></p>
+                </div>
             </div>
         </section>
 
@@ -38,14 +41,15 @@
             <table id="results-table">
                 <thead>
                     <tr>
+                        <th>Score</th>
                         <th>Name</th>
-                        <th>Email</th>
                         <th>Role</th>
-                        <th>STEM?</th>
+                        <th>Type</th>
+                        <th>Email</th>
                     </tr>
                 </thead>
                 <tbody id="results-body">
-                    </tbody>
+                </tbody>
             </table>
         </section>
     </div>

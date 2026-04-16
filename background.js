@@ -5,7 +5,7 @@ let visitedUrls = new Set();
 let isCrawling = false;
 let currentDomain = "";
 let currentUrl = "";
-let maxPages = 120;
+let maxPages = 120; // Max 120 pages per crawl session
 let workerTabId = null;
 
 // Initialize state
@@ -78,7 +78,6 @@ async function startCrawlerLoop() {
     if (!isCrawling) return;
 
     while (isCrawling && crawlQueue.length > 0 && visitedUrls.size < maxPages) {
-        // Sort queue by priority occasionally or just pick the best one
         sortQueue();
         const url = crawlQueue.shift();
 
@@ -95,27 +94,48 @@ async function startCrawlerLoop() {
 
             if (!isCrawling) break;
 
-            // Tab Reuse Logic
             if (workerTabId === null) {
                 workerTabId = await createWorkerTab(url);
             } else {
                 try {
                     await updateWorkerTab(workerTabId, url);
                 } catch (e) {
-                    // If tab was closed by user, recreate it
                     workerTabId = await createWorkerTab(url);
                 }
             }
 
-            // Wait for JS to execute
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 2500)); // Increased wait for heavy SPA pages
 
-            const result = await new Promise((resolve) => {
+            let result = await new Promise((resolve) => {
                 chrome.tabs.sendMessage(workerTabId, { action: "SCAN_PAGE", domain: currentDomain }, (res) => {
                     if (chrome.runtime.lastError) resolve(null);
                     else resolve(res);
                 });
             });
+
+            // If it failed (might be a JSON or direct file), try a direct fetch and basic regex scan
+            if (!result && (url.includes('api') || url.includes('json'))) {
+                try {
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        const text = await response.text();
+                        const emails = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || [];
+                        if (emails.length > 0) {
+                            const teachers = [...new Set(emails.map(e => e.toLowerCase()))].map(email => ({
+                                Name: "Discovered via API",
+                                Email: email,
+                                Role: "Unknown (API Source)",
+                                PriorityScore: 20,
+                                RoleType: "Staff",
+                                IsSTEM: "No"
+                            }));
+                            result = { teachers, links: [] };
+                        }
+                    }
+                } catch (e) {
+                    console.error("[STEM-SCRAPER] API Fetch failed:", e);
+                }
+            }
 
             if (result) {
                 await processScanResults(result, url);
@@ -166,8 +186,8 @@ function updateWorkerTab(tabId, url) {
     });
 }
 
-const HIGH_PRIORITY = ['directory', 'staff', 'faculty', 'teacher', 'people', 'department'];
-const MEDIUM_PRIORITY = ['math', 'science', 'stem', 'technology', 'engineering', 'about', 'contact', 'academics'];
+const HIGH_PRIORITY = ['directory', 'staff', 'faculty', 'teacher', 'people', 'department', 'administration', 'leadership', 'principal', 'superintendent'];
+const MEDIUM_PRIORITY = ['math', 'science', 'stem', 'technology', 'engineering', 'about', 'contact', 'academics', 'board', 'district'];
 
 function sortQueue() {
     crawlQueue.sort((a, b) => {
@@ -175,9 +195,11 @@ function sortQueue() {
         const bLower = b.toLowerCase();
         
         const getScore = (url) => {
-            if (HIGH_PRIORITY.some(kw => url.includes(kw))) return 2;
-            if (MEDIUM_PRIORITY.some(kw => url.includes(kw))) return 1;
-            return 0;
+            let score = 0;
+            if (HIGH_PRIORITY.some(kw => url.includes(kw))) score += 10;
+            if (MEDIUM_PRIORITY.some(kw => url.includes(kw))) score += 5;
+            if (url.includes('api') || url.includes('json')) score += 8;
+            return score;
         };
 
         return getScore(bLower) - getScore(aLower);
@@ -185,13 +207,14 @@ function sortQueue() {
 }
 
 async function processScanResults(result, pageUrl) {
-    const { teachers, links } = result;
+    const { teachers, links, discoveredAPIs } = result;
 
     // Enqueue new links
-    links.forEach((link) => {
+    const allNewLinks = [...(links || []), ...(discoveredAPIs || [])];
+    allNewLinks.forEach((link) => {
         try {
             const urlObj = new URL(link);
-            urlObj.hash = ""; // Remove hashes
+            urlObj.hash = "";
             const cleanUrl = urlObj.href;
 
             if (
@@ -202,8 +225,7 @@ async function processScanResults(result, pageUrl) {
                 const lower = cleanUrl.toLowerCase();
                 if (lower.match(/\.(pdf|jpg|png|doc|docx|xls|xlsx|zip|mp4|mov|jpeg|gif)$/i)) return;
                 
-                // Only keep links that seem relevant to save space and time
-                if (HIGH_PRIORITY.concat(MEDIUM_PRIORITY).some(kw => lower.includes(kw)) || visitedUrls.size < 20) {
+                if (HIGH_PRIORITY.concat(MEDIUM_PRIORITY).some(kw => lower.includes(kw)) || visitedUrls.size < 30) {
                     crawlQueue.push(cleanUrl);
                 }
             }
@@ -213,20 +235,28 @@ async function processScanResults(result, pageUrl) {
     if (teachers && teachers.length > 0) {
         chrome.storage.local.get(["teachers"], (res) => {
             const existing = res.teachers || [];
-            const existingEmails = new Set(existing.map((t) => t.Email.toLowerCase()));
-            let added = 0;
+            const existingEmails = new Map(existing.map((t) => [t.Email.toLowerCase(), t]));
+            let updated = false;
 
             teachers.forEach((t) => {
-                if (!existingEmails.has(t.Email.toLowerCase())) {
+                const email = t.Email.toLowerCase();
+                if (!existingEmails.has(email)) {
                     t.PageURL = pageUrl;
                     t.CrawledAt = new Date().toISOString();
                     existing.push(t);
-                    existingEmails.add(t.Email.toLowerCase());
-                    added++;
+                    existingEmails.set(email, t);
+                    updated = true;
+                } else {
+                    // Update existing with better data if found
+                    const current = existingEmails.get(email);
+                    if ((t.PriorityScore || 0) > (current.PriorityScore || 0)) {
+                        Object.assign(current, t);
+                        updated = true;
+                    }
                 }
             });
 
-            if (added > 0) chrome.storage.local.set({ teachers: existing });
+            if (updated) chrome.storage.local.set({ teachers: existing });
         });
     }
 }
