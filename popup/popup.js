@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const currentUrlEl = document.getElementById("current-url");
     const teachersFoundEl = document.getElementById("teachers-found");
     const stemFoundEl = document.getElementById("stem-found");
+    const leadershipFoundEl = document.getElementById("leadership-found");
     const resultsBody = document.getElementById("results-body");
 
     let targetUrl = "";
@@ -44,6 +45,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const stemCount = teachers.filter((t) => t.IsSTEM === "Yes").length;
                 stemFoundEl.textContent = stemCount;
+                
+                const leadershipCount = teachers.filter((t) => t.RoleType === "Leadership").length;
+                if (leadershipFoundEl) leadershipFoundEl.textContent = leadershipCount;
 
                 if (isCrawling) {
                     statusBadge.textContent = "Running";
@@ -71,24 +75,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTable(teachers) {
+        if (!resultsBody) return;
         resultsBody.innerHTML = "";
 
-        // Sort: STEM teachers first
+        // Sort by Priority Score descending
         const sortedTeachers = [...teachers].sort((a, b) => {
-            if (a.IsSTEM === "Yes" && b.IsSTEM === "No") return -1;
-            if (a.IsSTEM === "No" && b.IsSTEM === "Yes") return 1;
-            return 0;
+            return (b.PriorityScore || 0) - (a.PriorityScore || 0);
         });
 
         sortedTeachers.forEach((t) => {
             const tr = document.createElement("tr");
-            const stemClass = t.IsSTEM === "Yes" ? "is-stem-yes" : "";
-
+            const typeClass = t.RoleType === "STEM" ? "is-stem-yes" : (t.RoleType === "Leadership" ? "is-leadership" : "");
+            
             tr.innerHTML = `
+                <td><span class="score-badge">${t.PriorityScore || 0}</span></td>
                 <td title="${t.Name}">${t.Name}</td>
-                <td title="${t.Email}"><a href="mailto:${t.Email}">${t.Email}</a></td>
                 <td title="${t.Role}">${t.Role}</td>
-                <td class="${stemClass}">${t.IsSTEM}</td>
+                <td><span class="type-tag ${typeClass.toLowerCase()}">${t.RoleType || 'Staff'}</span></td>
+                <td title="${t.Email}"><a href="mailto:${t.Email}">${t.Email}</a></td>
             `;
             resultsBody.appendChild(tr);
         });
@@ -132,6 +136,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 "Name",
                 "Email",
                 "Role",
+                "RoleType",
+                "PriorityScore",
                 "IsSTEM",
                 "ContextSnippet",
                 "PageURL",
@@ -143,6 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     `"${(t.Name || "").replace(/"/g, '""')}"`,
                     `"${(t.Email || "").replace(/"/g, '""')}"`,
                     `"${(t.Role || "").replace(/"/g, '""')}"`,
+                    `"${(t.RoleType || "Staff")}"`,
+                    `"${(t.PriorityScore || 0)}"`,
                     `"${t.IsSTEM}"`,
                     `"${(t.ContextSnippet || "").replace(/"/g, '""')}"`,
                     `"${(t.PageURL || "").replace(/"/g, '""')}"`,
