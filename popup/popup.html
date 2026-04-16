@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School STEM Scraper</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h2>🔬 STEM Teacher Scraper</h2>
+            <div id="status-badge" class="badge idle">Idle</div>
+        </header>
+
+        <section class="controls">
+            <div class="domain-info">
+                <strong>Target Domain: </strong> <span id="current-domain">Not detected</span>
+            </div>
+            
+            <div class="button-group">
+                <button id="btn-start" class="primary">Start Crawl</button>
+                <button id="btn-pause" class="secondary" disabled>Pause</button>
+                <button id="btn-resume" class="secondary" disabled>Resume</button>
+                <button id="btn-clear" class="danger">Clear Data</button>
+                <button id="btn-export" class="success">Export CSV</button>
+            </div>
+
+            <div class="stats">
+                <p>Pages Crawled: <span id="pages-crawled">0</span> / 120</p>
+                <p>Total Teachers: <span id="teachers-found">0</span></p>
+                <p>STEM Found: <span id="stem-found" style="color:var(--success)">0</span></p>
+            </div>
+        </section>
+
+        <section class="results">
+            <table id="results-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>STEM?</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body">
+                    </tbody>
+            </table>
+        </section>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+:root {
+    --bg: #f8fafc;
+    --text: #0f172a;
+    --primary: #3b82f6;
+    --secondary: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+    --border: #e2e8f0;
+    --stem-bg: #d1fae5;
+}
+
+body {
+    width: 650px;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+}
+
+.container { padding: 16px; }
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+}
+
+h2 { margin: 0; font-size: 1.25rem; color: var(--primary); }
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.badge.idle { background-color: var(--secondary); color: white; }
+.badge.running { background-color: var(--primary); color: white; animation: pulse 2s infinite; }
+.badge.paused { background-color: #f59e0b; color: white; }
+
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+.domain-info { font-size: 0.9rem; margin-bottom: 12px; }
+
+.button-group {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.2s;
+    color: white;
+}
+
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:hover:not(:disabled) { opacity: 0.9; }
+
+button.primary { background-color: var(--primary); }
+button.secondary { background-color: var(--secondary); }
+button.success { background-color: var(--success); }
+button.danger { background-color: var(--danger); }
+
+.stats {
+    display: flex;
+    gap: 24px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+.stats p { margin: 0; }
+
+.results {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background-color: #f1f5f9;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.is-stem-yes { background-color: var(--stem-bg); font-weight: bold; color: #065f46; text-align: center; }
