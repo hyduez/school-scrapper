@@ -1,4 +1,4 @@
-// [STEM-SCRAPER] Content Script - Improved Extraction Engine
+// [STEM-SCRAPER] Content Script - Hyper-Smart Extraction Engine
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "SCAN_PAGE") {
@@ -9,20 +9,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // --- Constants & Config ---
-const STEM_WEIGHTS = {
-    keywords: {
-        'math': 10, 'mathematics': 10, 'algebra': 10, 'calculus': 10, 'geometry': 10, 'statistics': 10, 'trigonometry': 10,
-        'science': 10, 'biology': 10, 'physics': 10, 'chemistry': 10, 'earth science': 10, 'life science': 10, 'anatomy': 10,
-        'technology': 10, 'computer science': 10, 'coding': 10, 'robotics': 10, 'it': 5, 'ict': 10,
-        'engineering': 10, 'stem': 15, 'steam': 10, 'maker': 5
-    },
-    negative: ['english', 'history', 'arts', 'fine arts', 'music', 'physical education', 'pe', 'social studies', 'spanish', 'french', 'language', 'humanities', 'theatre', 'drama', 'social science']
+const STEM_KEYWORDS = {
+    'math': 10, 'mathematics': 10, 'algebra': 10, 'calculus': 10, 'geometry': 10, 'statistics': 10, 'trigonometry': 10,
+    'science': 10, 'biology': 10, 'physics': 10, 'chemistry': 10, 'earth science': 10, 'life science': 10, 'anatomy': 10,
+    'technology': 10, 'computer science': 10, 'coding': 10, 'robotics': 10, 'it': 5, 'ict': 10,
+    'engineering': 10, 'stem': 15, 'steam': 10, 'maker': 5, 'biotech': 10, 'physic': 10, 'chem': 10, 'bio': 5
 };
 
-const LEADERSHIP_KEYWORDS = /principal|superintendent|director|head|administrator|dean|coordinator|chief|president|manager|supervisor/i;
-const ROLE_KEYWORDS = /teacher|instructor|professor|head|director|coordinator|advisor|faculty|coach|specialist|principal|assistant/i;
-const NAME_BLACKLIST = ['contact', 'email', 'phone', 'staff', 'teacher', 'faculty', 'directory', 'back to top', 'name', 'profile', 'department', 'view', 'more'];
+const NEGATIVE_KEYWORDS = ['english', 'history', 'arts', 'fine arts', 'music', 'physical education', 'pe', 'social studies', 'spanish', 'french', 'language', 'humanities', 'theatre', 'drama', 'social science', 'counselor', 'nurse', 'custodian', 'food service'];
+
+const LEADERSHIP_KEYWORDS = /principal|superintendent|director|head|administrator|dean|coordinator|chief|president|manager|supervisor|chancellor/i;
+const ROLE_KEYWORDS = /teacher|instructor|professor|head|director|coordinator|advisor|faculty|coach|specialist|principal|assistant|librarian|specialist/i;
+const NAME_BLACKLIST = ['contact', 'email', 'phone', 'staff', 'teacher', 'faculty', 'directory', 'back to top', 'name', 'profile', 'department', 'view', 'more', 'search', 'home', 'login'];
 const EMAIL_REGEX = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+
+// Search/Filter Selectors
+const SEARCH_INPUT_SELECTORS = [
+    'input[name*="search"]',
+    'input[id*="search"]',
+    'input[name*="keyword"]',
+    'input[id*="keyword"]',
+    'input[placeholder*="Search"]',
+    'input[placeholder*="keyword"]',
+    '#const_search_keyword' // Finalsite specific
+];
+
+const FILTER_SELECTORS = [
+    'select[name*="dept"]',
+    'select[id*="dept"]',
+    'select[name*="filter"]',
+    'select[id*="filter"]',
+    'select[name*="category"]',
+    '.department-filter select'
+];
 
 // --- Helper Utilities ---
 
@@ -48,7 +67,6 @@ function getEmailFromAttributes(element) {
             if (match) return match[0].toLowerCase();
         }
     }
-    // Check for data-user and data-domain combo
     const user = element.getAttribute('data-user');
     const domain = element.getAttribute('data-domain');
     if (user && domain) {
@@ -64,41 +82,49 @@ function getContainerScore(element) {
     const tagName = element.tagName.toUpperCase();
     const className = (element.className || "").toString().toLowerCase();
     const id = (element.id || "").toLowerCase();
+    const text = (element.innerText || "").toLowerCase();
 
     // Tag Type Bonuses
-    if (['TR', 'LI', 'ARTICLE', 'SECTION'].includes(tagName)) score += 5;
-    if (tagName === 'DIV') score += 2;
+    if (['TR', 'LI', 'ARTICLE', 'SECTION'].includes(tagName)) score += 10;
+    if (tagName === 'DIV') score += 5;
 
     // Class/ID Matches
-    const keywords = ['staff', 'member', 'profile', 'card', 'directory', 'teacher', 'user', 'person', 'row', 'item'];
+    const keywords = ['staff', 'member', 'profile', 'card', 'directory', 'teacher', 'user', 'person', 'row', 'item', 'faculty'];
     keywords.forEach(kw => {
-        if (className.includes(kw)) score += 3;
-        if (id.includes(kw)) score += 3;
+        if (className.includes(kw)) score += 5;
+        if (id.includes(kw)) score += 5;
     });
 
-    // Structure
-    if (element.querySelector('h1, h2, h3, h4, h5, h6, strong, b')) score += 5;
+    // Content Indicators
+    if (element.querySelector('h1, h2, h3, h4, h5, h6, strong, b')) score += 10;
+    if (text.includes('email') || text.includes('@')) score += 10;
+    if (text.includes('phone') || text.match(/\d{3}-\d{3}-\d{4}/)) score += 5;
     
-    const mailtos = element.querySelectorAll('a[href^="mailto:"]');
-    if (mailtos.length === 1) score += 5;
-    else if (mailtos.length > 1) score -= 5; // Probably a list container, not a single teacher card
+    // STEM/Leadership density
+    for (const [kw, weight] of Object.entries(STEM_KEYWORDS)) {
+        if (text.includes(kw)) score += 5;
+    }
+    if (LEADERSHIP_KEYWORDS.test(text)) score += 10;
 
-    // Sibling analysis - repeating elements suggest list items
+    const mailtos = element.querySelectorAll('a[href^="mailto:"]');
+    if (mailtos.length === 1) score += 20;
+    else if (mailtos.length > 1) score -= 10; 
+
+    // Structure consistency
     if (element.parentElement) {
         const siblings = Array.from(element.parentElement.children);
         if (siblings.length > 1) {
             const sameTag = siblings.filter(s => s.tagName === tagName).length;
             const sameClass = siblings.filter(s => s.className === element.className && element.className !== "").length;
-            if (sameTag > 2) score += 2;
-            if (sameClass > 2) score += 5;
+            if (sameTag > 2) score += 5;
+            if (sameClass > 2) score += 10;
         }
     }
 
-    // Size penalty/bonus
-    const textLen = (element.innerText || "").trim().length;
-    if (textLen > 2000) score -= 20; // Too big
-    if (textLen < 30) score -= 10; // Too small
-    if (textLen > 100 && textLen < 800) score += 5; // Good size for a card
+    const textLen = text.trim().length;
+    if (textLen > 2500) score -= 30;
+    if (textLen < 50) score -= 15;
+    if (textLen > 150 && textLen < 1000) score += 15;
 
     return score;
 }
@@ -124,46 +150,41 @@ function findBestContainer(startNode) {
 function cleanName(name) {
     if (!name) return "";
     return name
-        .replace(/^(Name|Email|Contact|Teacher|Staff|Instructor|Mr\.|Mrs\.|Ms\.|Dr\.|Coach):\s*/i, "")
+        .replace(/^(Name|Email|Contact|Teacher|Staff|Instructor|Mr\.|Mrs\.|Ms\.|Dr\.|Coach|Name:):\s*/i, "")
         .replace(/,\s*(PhD|M\.?S\.?|B\.?S\.?|Ed\.?D\.?|MA|BA|BS|National Board Certified).*$/i, "")
         .replace(/\s+/g, " ")
         .trim();
 }
 
 function extractName(container, emailNode) {
-    // Pass 1: Microdata
     const microdataName = container.querySelector('[itemprop="name"]');
     if (microdataName && microdataName.innerText.trim()) {
         const n = cleanName(microdataName.innerText);
         if (n.length > 2 && n.length < 50) return n;
     }
 
-    // Pass 2: Headings within the container
-    const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b');
+    const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, .name, [class*="name"]');
     for (const h of headings) {
         const text = h.innerText.trim();
-        if (text.length > 2 && text.length < 50 && !NAME_BLACKLIST.some(b => text.toLowerCase().includes(b))) {
-            if (!text.includes('@')) return cleanName(text);
+        if (text.length > 2 && text.length < 50 && !NAME_BLACKLIST.some(b => text.toLowerCase() === b) && !text.includes('@')) {
+            return cleanName(text);
         }
     }
 
-    // Pass 3: Table Analysis
     if (container.tagName === 'TR' || container.querySelector('td')) {
         const cells = container.querySelectorAll('td');
-        if (cells.length > 0) {
-            for (let i = 0; i < Math.min(cells.length, 3); i++) {
-                const text = cells[i].innerText.trim();
-                if (text.length > 2 && text.length < 50 && !text.includes('@') && !NAME_BLACKLIST.some(b => text.toLowerCase().includes(b))) {
-                    return cleanName(text);
-                }
+        for (let i = 0; i < Math.min(cells.length, 3); i++) {
+            const text = cells[i].innerText.trim();
+            if (text.length > 2 && text.length < 50 && !text.includes('@') && !NAME_BLACKLIST.some(b => text.toLowerCase().includes(b))) {
+                return cleanName(text);
             }
         }
     }
 
-    // Pass 4: Proximity to email node in text
     const textContent = container.innerText;
     const lines = textContent.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 60);
-    const emailLineIdx = lines.findIndex(l => l.toLowerCase().includes(emailNode.innerText.trim().toLowerCase() || "@"));
+    const emailText = emailNode.innerText.trim().toLowerCase();
+    const emailLineIdx = lines.findIndex(l => (emailText && l.toLowerCase().includes(emailText)) || l.toLowerCase().includes("@"));
     
     if (emailLineIdx > 0) {
         for (let i = emailLineIdx - 1; i >= 0; i--) {
@@ -174,7 +195,6 @@ function extractName(container, emailNode) {
         }
     }
 
-    // Pass 5: Fallback - First reasonable line
     for (const line of lines) {
         if (!line.includes('@') && !NAME_BLACKLIST.some(b => line.toLowerCase().includes(b))) {
             return cleanName(line);
@@ -196,7 +216,6 @@ function extractRole(container, name) {
     
     const match = text.match(ROLE_KEYWORDS);
     if (match) {
-        // Try to find the full line containing this match
         const lineMatch = lines.find(l => l.includes(match[0]));
         if (lineMatch && lineMatch.length < 80) return lineMatch;
         return match[0];
@@ -209,26 +228,23 @@ function calculatePriorityScore(container, role) {
     let score = 0;
     const text = (container.innerText + " " + (role || "")).toLowerCase();
     
-    // STEM Scoring
     let stemScore = 0;
-    for (const [kw, weight] of Object.entries(STEM_WEIGHTS.keywords)) {
+    for (const [kw, weight] of Object.entries(STEM_KEYWORDS)) {
         if (text.includes(kw)) stemScore += weight;
     }
-    STEM_WEIGHTS.negative.forEach(kw => {
+    NEGATIVE_KEYWORDS.forEach(kw => {
         if (text.includes(kw)) stemScore -= 20;
     });
 
-    // Leadership Scoring
     let leadershipScore = 0;
-    if (LEADERSHIP_KEYWORDS.test(role || "")) leadershipScore += 30;
+    if (LEADERSHIP_KEYWORDS.test(role || "")) leadershipScore += 40;
     if (LEADERSHIP_KEYWORDS.test(container.innerText)) leadershipScore += 10;
 
     score = Math.max(stemScore, leadershipScore);
 
-    // URL Bonus
     const url = window.location.href.toLowerCase();
-    if (url.includes('admin') || url.includes('leader') || url.includes('principal')) score += 10;
-    if (url.includes('stem') || url.includes('math') || url.includes('science') || url.includes('tech')) score += 10;
+    if (url.includes('admin') || url.includes('leader') || url.includes('principal')) score += 15;
+    if (url.includes('stem') || url.includes('math') || url.includes('science') || url.includes('tech')) score += 15;
 
     return {
         total: score,
@@ -238,46 +254,79 @@ function calculatePriorityScore(container, role) {
 }
 
 function detectHiddenAPIs() {
-    const entries = window.performance.getEntriesByType('resource');
-    return entries
-        .filter(entry => 
-            entry.initiatorType === 'fetch' || 
-            entry.initiatorType === 'xmlhttprequest'
-        )
-        .filter(entry => 
-            entry.name.includes('api') || 
-            entry.name.includes('json') || 
-            entry.name.includes('staff') || 
-            entry.name.includes('directory')
-        )
-        .map(entry => entry.name);
+    try {
+        const entries = window.performance.getEntriesByType('resource');
+        return entries
+            .filter(entry => 
+                entry.initiatorType === 'fetch' || 
+                entry.initiatorType === 'xmlhttprequest'
+            )
+            .filter(entry => 
+                entry.name.includes('api') || 
+                entry.name.includes('json') || 
+                entry.name.includes('staff') || 
+                entry.name.includes('directory') ||
+                entry.name.includes('search') ||
+                entry.name.includes('const_search')
+            )
+            .map(entry => entry.name);
+    } catch (e) {
+        return [];
+    }
 }
 
-function findCategoryFilters() {
-    const filters = [];
-    const selectors = [
-        'select',
-        'a[href*="dept"]',
-        'a[href*="filter"]',
-        'button',
-        '.filter',
-        '[class*="department"]'
-    ];
-    
-    selectors.forEach(selector => {
-        document.querySelectorAll(selector).forEach(el => {
-            const text = el.innerText.toLowerCase();
-            if (text.includes('math') || text.includes('science') || text.includes('stem') || text.includes('staff') || text.includes('department')) {
-                if (el.tagName === 'A') {
-                    filters.push(el.href);
-                } else {
-                    // For buttons/selects, we can't easily crawl them as links, but we can note they exist
-                    // or try to find data attributes
-                }
+function findSearchAndFilters() {
+    const discoveredActions = [];
+    const baseUrl = window.location.origin + window.location.pathname;
+
+    // Detect Search Inputs
+    SEARCH_INPUT_SELECTORS.forEach(selector => {
+        const input = document.querySelector(selector);
+        if (input) {
+            const form = input.closest('form');
+            if (form && form.method.toLowerCase() === 'get') {
+                const action = form.action || baseUrl;
+                const name = input.name || 'keyword';
+                ['Math', 'Science', 'STEM', 'Technology'].forEach(term => {
+                    const searchUrl = new URL(action, window.location.href);
+                    searchUrl.searchParams.set(name, term);
+                    discoveredActions.push(searchUrl.href);
+                });
+            } else if (input.id === 'const_search_keyword') {
+                // Finalsite specific logic - usually triggers a JS search
+                ['Math', 'Science', 'STEM'].forEach(term => {
+                    discoveredActions.push(`${baseUrl}?const_search_keyword=${term}`);
+                });
             }
+        }
+    });
+
+    // Detect Dropdown Filters
+    FILTER_SELECTORS.forEach(selector => {
+        const selects = document.querySelectorAll(selector);
+        selects.forEach(select => {
+            Array.from(select.options).forEach(opt => {
+                const val = opt.value;
+                const text = opt.innerText.toLowerCase();
+                if (val && (text.includes('math') || text.includes('science') || text.includes('stem') || text.includes('tech'))) {
+                    const filterUrl = new URL(window.location.href);
+                    filterUrl.searchParams.set(select.name || 'department', val);
+                    discoveredActions.push(filterUrl.href);
+                }
+            });
         });
     });
-    return [...new Set(filters)];
+
+    // Department links
+    const deptLinks = document.querySelectorAll('a[href*="dept"], a[href*="filter"], a[href*="category"]');
+    deptLinks.forEach(a => {
+        const text = a.innerText.toLowerCase();
+        if (text.includes('math') || text.includes('science') || text.includes('stem') || text.includes('tech')) {
+            discoveredActions.push(a.href);
+        }
+    });
+
+    return [...new Set(discoveredActions)];
 }
 
 // --- Main Extraction Engine ---
@@ -285,9 +334,8 @@ function findCategoryFilters() {
 function performExtraction(targetDomain) {
     const foundEmails = new Map();
 
-    // Calculate distinctive parts of the domain to filter out third-party emails
     const domainParts = targetDomain.toLowerCase().replace("www.", "").split(".");
-    const distinctiveParts = domainParts.filter(p => p.length > 2 && !['com', 'org', 'net', 'edu', 'gov', 'k12', 'us'].includes(p));
+    const distinctiveParts = domainParts.filter(p => p.length > 2 && !['com', 'org', 'net', 'edu', 'gov', 'k12', 'us', 'schools'].includes(p));
     
     const isTargetDomain = (email) => {
         const parts = email.toLowerCase().split('@');
@@ -312,18 +360,17 @@ function performExtraction(targetDomain) {
             PriorityScore: scoreData.total,
             RoleType: scoreData.isLeadership ? "Leadership" : (scoreData.isSTEM ? "STEM" : "Staff"),
             IsSTEM: scoreData.isSTEM ? "Yes" : "No",
-            ContextSnippet: (container.innerText || "").substring(0, 150).replace(/\s+/g, " ").trim() + "..."
+            ContextSnippet: (container.innerText || "").substring(0, 200).replace(/\s+/g, " ").trim() + "..."
         });
     };
 
-    // 1. Scan mailto links and elements with email attributes
-    const allElements = document.querySelectorAll('a, div, span, td, li');
-    allElements.forEach(el => {
+    // 1. Dual Collection: mailto + attributes
+    document.querySelectorAll('a, [data-email], [data-user]').forEach(el => {
         const email = getEmailFromAttributes(el);
         if (email) processTeacher(email, el);
     });
 
-    // 2. Scan text nodes for raw emails (including de-obfuscation)
+    // 2. Dual Collection: Regex scan of text nodes
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
     let node;
     while ((node = walker.nextNode())) {
@@ -343,12 +390,10 @@ function performExtraction(targetDomain) {
         schoolAddress = addressMatch[0].replace(/\n/g, ", ").trim();
     }
 
-    // 4. Collect links for crawling
+    // 4. Collect links and discovery actions
     const links = Array.from(document.querySelectorAll("a[href]")).map(a => a.href);
-    const categoryLinks = findCategoryFilters();
-    const allLinks = [...new Set([...links, ...categoryLinks])];
-
-    // 5. Detect Hidden APIs
+    const discoveredActions = findSearchAndFilters();
+    
     const discoveredAPIs = detectHiddenAPIs();
 
     const results = Array.from(foundEmails.values()).map(t => {
@@ -356,11 +401,11 @@ function performExtraction(targetDomain) {
         return t;
     });
 
-    console.log(`[STEM-SCRAPER] Page: ${window.location.href} | Teachers: ${results.length} | APIs: ${discoveredAPIs.length}`);
+    console.log(`[STEM-SCRAPER] Page: ${window.location.href} | Teachers: ${results.length} | Actions: ${discoveredActions.length} | APIs: ${discoveredAPIs.length}`);
 
     return { 
         teachers: results, 
-        links: allLinks,
+        links: [...new Set([...links, ...discoveredActions])],
         discoveredAPIs: discoveredAPIs
     };
 }

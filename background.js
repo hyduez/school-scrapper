@@ -1,11 +1,11 @@
-// [STEM-SCRAPER] Background Service Worker - Optimized Crawler
+// [STEM-SCRAPER] Background Service Worker - Hyper-Smart Crawler
 
 let crawlQueue = [];
 let visitedUrls = new Set();
 let isCrawling = false;
 let currentDomain = "";
 let currentUrl = "";
-let maxPages = 120; // Max 120 pages per crawl session
+let maxPages = 150; // Increased for hyper-smart search exploration
 let workerTabId = null;
 
 // Initialize state
@@ -89,7 +89,7 @@ async function startCrawlerLoop() {
         console.log(`[STEM-SCRAPER] Crawling (${visitedUrls.size}/${maxPages}): ${url}`);
 
         try {
-            const delay = Math.floor(Math.random() * (2000 - 800 + 1)) + 800;
+            const delay = Math.floor(Math.random() * (2500 - 800 + 1)) + 800;
             await new Promise(r => setTimeout(r, delay));
 
             if (!isCrawling) break;
@@ -104,7 +104,9 @@ async function startCrawlerLoop() {
                 }
             }
 
-            await new Promise(r => setTimeout(r, 2500)); // Increased wait for heavy SPA pages
+            // Longer wait for initial search results
+            const waitTime = (url.includes('keyword') || url.includes('search')) ? 4000 : 2500;
+            await new Promise(r => setTimeout(r, waitTime));
 
             let result = await new Promise((resolve) => {
                 chrome.tabs.sendMessage(workerTabId, { action: "SCAN_PAGE", domain: currentDomain }, (res) => {
@@ -113,27 +115,12 @@ async function startCrawlerLoop() {
                 });
             });
 
-            // If it failed (might be a JSON or direct file), try a direct fetch and basic regex scan
-            if (!result && (url.includes('api') || url.includes('json'))) {
-                try {
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const text = await response.text();
-                        const emails = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || [];
-                        if (emails.length > 0) {
-                            const teachers = [...new Set(emails.map(e => e.toLowerCase()))].map(email => ({
-                                Name: "Discovered via API",
-                                Email: email,
-                                Role: "Unknown (API Source)",
-                                PriorityScore: 20,
-                                RoleType: "Staff",
-                                IsSTEM: "No"
-                            }));
-                            result = { teachers, links: [] };
-                        }
-                    }
-                } catch (e) {
-                    console.error("[STEM-SCRAPER] API Fetch failed:", e);
+            // If it failed or looks like an API/JSON, try direct fetch
+            if (!result || url.includes('api') || url.includes('json') || url.includes('.json')) {
+                const apiResult = await attemptApiFetch(url);
+                if (apiResult) {
+                    if (!result) result = apiResult;
+                    else result.teachers = [...(result.teachers || []), ...(apiResult.teachers || [])];
                 }
             }
 
@@ -155,6 +142,31 @@ async function startCrawlerLoop() {
         saveState();
         console.log("[STEM-SCRAPER] Crawl finished.");
     }
+}
+
+async function attemptApiFetch(url) {
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            const text = await response.text();
+            const emails = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || [];
+            if (emails.length > 0) {
+                const teachers = [...new Set(emails.map(e => e.toLowerCase()))].map(email => ({
+                    Name: "Discovered via API/Resource",
+                    Email: email,
+                    Role: "Unknown (API Source)",
+                    PriorityScore: 25,
+                    RoleType: "Staff",
+                    IsSTEM: "No",
+                    ContextSnippet: `Found in resource: ${url}`
+                }));
+                return { teachers, links: [] };
+            }
+        }
+    } catch (e) {
+        console.error("[STEM-SCRAPER] API Fetch failed:", e);
+    }
+    return null;
 }
 
 function createWorkerTab(url) {
@@ -186,7 +198,7 @@ function updateWorkerTab(tabId, url) {
     });
 }
 
-const HIGH_PRIORITY = ['directory', 'staff', 'faculty', 'teacher', 'people', 'department', 'administration', 'leadership', 'principal', 'superintendent'];
+const HIGH_PRIORITY = ['directory', 'staff', 'faculty', 'teacher', 'people', 'department', 'administration', 'leadership', 'principal', 'superintendent', 'const_search_keyword', 'keyword=math', 'keyword=science'];
 const MEDIUM_PRIORITY = ['math', 'science', 'stem', 'technology', 'engineering', 'about', 'contact', 'academics', 'board', 'district'];
 
 function sortQueue() {
@@ -196,9 +208,10 @@ function sortQueue() {
         
         const getScore = (url) => {
             let score = 0;
-            if (HIGH_PRIORITY.some(kw => url.includes(kw))) score += 10;
-            if (MEDIUM_PRIORITY.some(kw => url.includes(kw))) score += 5;
-            if (url.includes('api') || url.includes('json')) score += 8;
+            if (HIGH_PRIORITY.some(kw => url.includes(kw))) score += 50;
+            if (MEDIUM_PRIORITY.some(kw => url.includes(kw))) score += 20;
+            if (url.includes('api') || url.includes('json')) score += 30;
+            if (url.includes('keyword=') || url.includes('search=')) score += 40;
             return score;
         };
 
@@ -209,7 +222,6 @@ function sortQueue() {
 async function processScanResults(result, pageUrl) {
     const { teachers, links, discoveredAPIs } = result;
 
-    // Enqueue new links
     const allNewLinks = [...(links || []), ...(discoveredAPIs || [])];
     allNewLinks.forEach((link) => {
         try {
@@ -225,7 +237,10 @@ async function processScanResults(result, pageUrl) {
                 const lower = cleanUrl.toLowerCase();
                 if (lower.match(/\.(pdf|jpg|png|doc|docx|xls|xlsx|zip|mp4|mov|jpeg|gif)$/i)) return;
                 
-                if (HIGH_PRIORITY.concat(MEDIUM_PRIORITY).some(kw => lower.includes(kw)) || visitedUrls.size < 30) {
+                // Be more permissive for search/filter URLs
+                const isSearchOrFilter = lower.includes('keyword') || lower.includes('search') || lower.includes('dept') || lower.includes('filter');
+                
+                if (isSearchOrFilter || HIGH_PRIORITY.concat(MEDIUM_PRIORITY).some(kw => lower.includes(kw)) || visitedUrls.size < 40) {
                     crawlQueue.push(cleanUrl);
                 }
             }
@@ -247,7 +262,6 @@ async function processScanResults(result, pageUrl) {
                     existingEmails.set(email, t);
                     updated = true;
                 } else {
-                    // Update existing with better data if found
                     const current = existingEmails.get(email);
                     if ((t.PriorityScore || 0) > (current.PriorityScore || 0)) {
                         Object.assign(current, t);
